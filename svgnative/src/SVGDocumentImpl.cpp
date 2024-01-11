@@ -225,8 +225,8 @@ void SVGDocumentImpl::ParseChild(XMLNode* child)
 
         if (imageData)
         {
-            const float imageWidth = imageData->Width();
-            const float imageHeight = imageData->Height();
+            const float imageWidth = ParseLengthFromAttr(child, kWidthAttr, LengthType::kHorizontal);
+            const float imageHeight = ParseLengthFromAttr(child, kHeightAttr, LengthType::kVertical);
 
             Rect clipArea{ParseLengthFromAttr(child, kXAttr, LengthType::kHorizontal),
                 ParseLengthFromAttr(child, kYAttr, LengthType::kVertical),
@@ -815,7 +815,7 @@ float SVGDocumentImpl::ParseColorStop(const XMLNode* node, std::vector<ColorStop
     offset = std::min<float>(1.0, std::max<float>(0.0, offset));
 
     ColorImpl& paint = graphicStyle.stopColor;
-    if (paint.type() == typeid(ColorKeys))
+    if (SVGNative::holds_alternative<ColorKeys>(paint))
     {
         // Value is "currentColor". Simply set value to CSS color property.
         paint = fillStyle.color;
@@ -1025,14 +1025,6 @@ bool SVGDocumentImpl::GetBoundingBox(const char* id, Rect& bound)
     return true;
 }
 
-void SVGDocumentImpl::UpdateViewBox(Rect& bounds)
-{
-    mViewBox[0] = bounds.x;
-    mViewBox[1] = bounds.y;
-    mViewBox[2] = bounds.width;
-    mViewBox[3] = bounds.height;
-}
-
 #ifdef DEBUG_API
 bool GetSubBoundingBoxes(std::vector<Rect>& bounds);
 {
@@ -1167,14 +1159,14 @@ void SVGDocumentImpl::AddChildToCurrentGroup(std::shared_ptr<Element> element, s
 
 static void ResolveColorImpl(const ColorMap& colorMap, const ColorImpl& colorImpl, Color& color)
 {
-    if (colorImpl.type() == typeid(Variable))
+    if (SVGNative::holds_alternative<Variable>(colorImpl))
     {
-        const auto& var = boost::get<Variable>(colorImpl);
+        const auto& var = SVGNative::get<Variable>(colorImpl);
         const auto colorIt = colorMap.find(var.first);
         color = colorIt != colorMap.end() ? colorIt->second : var.second;
     }
-    else if (colorImpl.type() == typeid(Color))
-        color = boost::get<Color>(colorImpl);
+    else if (SVGNative::holds_alternative<Color>(colorImpl))
+        color = SVGNative::get<Color>(colorImpl);
     else
         // Can only be reached if fallback color value of var() is currentColor.
         color = Color{{0.0f, 0.0f, 0.0f, 1.0f}};
@@ -1182,30 +1174,30 @@ static void ResolveColorImpl(const ColorMap& colorMap, const ColorImpl& colorImp
 
 static void ResolvePaintImpl(const ColorMap& colorMap, const PaintImpl& internalPaint, const Color& currentColor, Paint& paint)
 {
-    if (internalPaint.type() == typeid(Variable))
+    if (SVGNative::holds_alternative<Variable>(internalPaint))
     {
-        const auto& var = boost::get<Variable>(internalPaint);
+        const auto& var = SVGNative::get<Variable>(internalPaint);
         const auto colorIt = colorMap.find(var.first);
         paint = colorIt != colorMap.end() ? colorIt->second : var.second;
     }
-    else if (internalPaint.type() == typeid(GradientImpl))
+    else if (SVGNative::holds_alternative<GradientImpl>(internalPaint))
     {
         // Stop colors may have variables as well.
-        const auto& internalGradient = boost::get<GradientImpl>(internalPaint);
+        const auto& internalGradient = SVGNative::get<GradientImpl>(internalPaint);
         paint = std::move(internalGradient);
-        auto& gradient = boost::get<Gradient>(paint);
+        auto& gradient = SVGNative::get<Gradient>(paint);
         for (const auto& colorStop : internalGradient.internalColorStops)
         {
             Color stopColor{{0, 0, 0, 1.0}};
             const auto& colorImpl = std::get<1>(colorStop);
-            if (colorImpl.type() == typeid(Variable))
+            if (SVGNative::holds_alternative<Variable>(colorImpl))
             {
-                const auto& var = boost::get<Variable>(colorImpl);
+                const auto& var = SVGNative::get<Variable>(colorImpl);
                 const auto colorIt = colorMap.find(var.first);
                 stopColor = colorIt != colorMap.end() ? colorIt->second : var.second;
             }
-            else if (colorImpl.type() == typeid(Color))
-                stopColor = boost::get<Color>(colorImpl);
+            else if (SVGNative::holds_alternative<Color>(colorImpl))
+                stopColor = SVGNative::get<Color>(colorImpl);
             else
             {
                 SVG_ASSERT_MSG(false, "Unhandled ColorImpl type");
@@ -1214,9 +1206,9 @@ static void ResolvePaintImpl(const ColorMap& colorMap, const PaintImpl& internal
             gradient.colorStops.push_back({std::get<0>(colorStop), stopColor});
         }
     }
-    else if (internalPaint.type() == typeid(Color))
-        paint = boost::get<Color>(internalPaint);
-    else if (internalPaint.type() == typeid(ColorKeys))
+    else if (SVGNative::holds_alternative<Color>(internalPaint))
+        paint = SVGNative::get<Color>(internalPaint);
+    else if (SVGNative::holds_alternative<ColorKeys>(internalPaint))
         // currentColor is the only possible enum value for now.
         paint = currentColor;
     else
